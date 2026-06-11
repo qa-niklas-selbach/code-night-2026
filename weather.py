@@ -7,7 +7,6 @@ Usage: python weather.py "City Name"
 
 import sys
 import os
-import locale
 import requests
 from datetime import datetime
 from dotenv import load_dotenv
@@ -15,12 +14,6 @@ from google import genai
 from google.genai import types
 
 load_dotenv()
-
-# Set German locale for date formatting
-try:
-    locale.setlocale(locale.LC_TIME, "de_DE.UTF-8")
-except locale.Error:
-    pass  # Fallback to system default if German locale unavailable
 
 
 # --- Weather Code Descriptions ---
@@ -106,8 +99,6 @@ def get_weather(latitude: float, longitude: float) -> dict:
 def build_prompt(city: str, country: str, weather: dict) -> str:
     """Build an isometric 3D miniature weather scene prompt."""
     condition = weather["condition"]
-    temp = weather["temperature"]
-    today = datetime.now().strftime("%d. %B %Y")
 
     prompt = (
         f"Present a clear, 45° top-down view of a horizontal (16:9) landscape isometric miniature 3D cartoon scene, "
@@ -117,19 +108,16 @@ def build_prompt(city: str, country: str, weather: dict) -> str:
         f"Fill the scene with architectural details: bridges, towers, churches, historic buildings, parks, and rivers "
         f"that are characteristic of {city}.\n\n"
         f"The scene features soft, refined textures with realistic PBR materials and gentle, lifelike "
-        f"lighting and shadow effects. The current weather is {condition} at {temp}°C. "
+        f"lighting and shadow effects. The current weather is {condition}. "
         f"Weather elements are creatively integrated into the urban architecture, establishing a dynamic "
         f"interaction between the city's landscape and atmospheric conditions, creating an immersive "
         f"weather ambiance.\n\n"
         f"Use a clean, unified composition with minimalistic aesthetics and a soft, solid-colored "
         f"background that highlights the main content. The overall visual style is fresh and soothing.\n\n"
-        f"Display a prominent weather icon at the top-center representing {condition}, with the date "
-        f"\"{today}\" (x-small text) and temperature \"{temp}°C\" (medium text) beneath it. "
-        f"The city name \"{city}\" (large text) is positioned directly above the weather icon. "
-        f"The weather information has no background and can subtly overlap with the buildings.\n\n"
-        f"STRICT: The ONLY text allowed in the entire image is the city name, date, and temperature. "
-        f"Do NOT include any street names, landmark labels, signs, descriptions, banners, or any other text whatsoever.\n\n"
-        f"All text, dates, and labels must be in German."
+        f"Display a prominent weather icon at the top-center representing {condition}. "
+        f"The weather icon has no background and can subtly overlap with the buildings.\n\n"
+        f"STRICT: Do NOT include ANY text, numbers, letters, street names, landmark labels, signs, "
+        f"descriptions, banners, dates, or temperature readings anywhere in the image."
     )
     return prompt
 
