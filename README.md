@@ -126,6 +126,6 @@ Das Skript besteht aus fünf Funktionen, die nacheinander ablaufen:
 ## 🌐 Verwendete Dienste
 
 - **[Open-Meteo](https://open-meteo.com/)** – kostenlose Wetter- und Geocoding-API, kein Schlüssel erforderlich
-- **[Google Gemini](https://aistudio.google.com/)** – KI-Bildgenerierung, API-Schlüssel erforderlich
+- **[Google Gemini](https://ai.google.dev/gemini-api/docs)** – KI-Bildgenerierung, API-Schlüssel erforderlich
 
 Viel Spaß beim Generieren! 🎨
