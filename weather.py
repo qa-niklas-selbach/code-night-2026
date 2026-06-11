@@ -83,12 +83,13 @@ def geocode_city(city_name: str) -> Location:
         raise ValueError(f"City '{city_name}' not found.")
 
     result = data["results"][0]
-    return {
+    location: Location = {
         "name": result["name"],
         "country": result.get("country", ""),
         "latitude": result["latitude"],
         "longitude": result["longitude"],
     }
+    return location
 
 
 def get_weather(latitude: float, longitude: float) -> WeatherData:
@@ -105,13 +106,14 @@ def get_weather(latitude: float, longitude: float) -> WeatherData:
     current = response.json()["current_weather"]
     weather_code = current["weathercode"]
 
-    return {
+    weather: WeatherData = {
         "temperature": current["temperature"],
         "windspeed": current["windspeed"],
         "winddirection": current["winddirection"],
         "weather_code": weather_code,
         "condition": WEATHER_CODES.get(weather_code, "unknown"),
     }
+    return weather
 
 
 def build_prompt(city: str, country: str, weather: WeatherData) -> str:
