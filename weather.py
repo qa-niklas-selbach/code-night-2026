@@ -1,6 +1,6 @@
 """
 Weather Illustration Generator
-Fetches current weather for a city and generates a Studio Ghibli-style illustration.
+Fetches current weather for a city and generates an isometric illustration.
 
 Usage: python weather.py "City Name"
 """
@@ -9,12 +9,33 @@ import sys
 import os
 import requests
 from datetime import datetime
+from typing import TypedDict
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
 load_dotenv()
 
+# --- Constants ---
+
+GEMINI_MODEL = "gemini-3.1-flash-image"
+GEOCODING_API_URL = "https://geocoding-api.open-meteo.com/v1/search"
+WEATHER_API_URL = "https://api.open-meteo.com/v1/forecast"
+
+# --- Data Types ---
+
+class Location(TypedDict):
+    name: str
+    country: str
+    latitude: float
+    longitude: float
+
+class WeatherData(TypedDict):
+    temperature: float
+    windspeed: float
+    winddirection: float
+    weather_code: int
+    condition: str
 
 # --- Weather Code Descriptions ---
 
@@ -50,12 +71,11 @@ WEATHER_CODES = {
 }
 
 
-def geocode_city(city_name: str) -> dict:
+def geocode_city(city_name: str) -> Location:
     """Convert city name to coordinates using Open-Meteo Geocoding API."""
-    url = "https://geocoding-api.open-meteo.com/v1/search"
     params = {"name": city_name, "count": 1, "language": "en", "format": "json"}
 
-    response = requests.get(url, params=params)
+    response = requests.get(GEOCODING_API_URL, params=params)
     response.raise_for_status()
 
     data = response.json()
@@ -71,22 +91,20 @@ def geocode_city(city_name: str) -> dict:
     }
 
 
-def get_weather(latitude: float, longitude: float) -> dict:
+def get_weather(latitude: float, longitude: float) -> WeatherData:
     """Fetch current weather from Open-Meteo Forecast API."""
-    url = "https://api.open-meteo.com/v1/forecast"
     params = {
         "latitude": latitude,
         "longitude": longitude,
         "current_weather": True,
     }
 
-    response = requests.get(url, params=params)
+    response = requests.get(WEATHER_API_URL, params=params)
     response.raise_for_status()
 
-    data = response.json()
-    current = data["current_weather"]
-
+    current = response.json()["current_weather"]
     weather_code = current["weathercode"]
+
     return {
         "temperature": current["temperature"],
         "windspeed": current["windspeed"],
@@ -96,30 +114,44 @@ def get_weather(latitude: float, longitude: float) -> dict:
     }
 
 
-def build_prompt(city: str, country: str, weather: dict) -> str:
+def build_prompt(city: str, country: str, weather: WeatherData) -> str:
     """Build an isometric 3D miniature weather scene prompt."""
     condition = weather["condition"]
 
-    prompt = (
-        f"Present a clear, 45° top-down view of a horizontal (16:9) landscape isometric miniature 3D cartoon scene, "
-        f"showcasing a wide panoramic view of {city}, {country} with as many iconic landmarks, famous buildings, "
-        f"and recognizable architecture as possible, all centered in the composition to showcase precise and delicate modeling. "
-        f"Include multiple well-known landmarks spread across the scene to create a rich, detailed cityscape. "
-        f"Fill the scene with architectural details: bridges, towers, churches, historic buildings, parks, and rivers "
-        f"that are characteristic of {city}.\n\n"
-        f"The scene features soft, refined textures with realistic PBR materials and gentle, lifelike "
-        f"lighting and shadow effects. The current weather is {condition}. "
-        f"Weather elements are creatively integrated into the urban architecture, establishing a dynamic "
-        f"interaction between the city's landscape and atmospheric conditions, creating an immersive "
-        f"weather ambiance.\n\n"
-        f"Use a clean, unified composition with minimalistic aesthetics and a soft, solid-colored "
-        f"background that highlights the main content. The overall visual style is fresh and soothing.\n\n"
-        f"Display a prominent weather icon at the top-center representing {condition}. "
-        f"The weather icon has no background and can subtly overlap with the buildings.\n\n"
-        f"STRICT: Do NOT include ANY text, numbers, letters, street names, landmark labels, signs, "
-        f"descriptions, banners, dates, or temperature readings anywhere in the image."
-    )
-    return prompt
+    return f"""\
+Present a clear, 45° top-down view of a horizontal (16:9) landscape isometric miniature 3D cartoon \
+scene, showcasing a wide panoramic view of {city}, {country} with as many iconic landmarks, famous \
+buildings, and recognizable architecture as possible, all centered in the composition to showcase \
+precise and delicate modeling. Include multiple well-known landmarks spread across the scene to create \
+a rich, detailed cityscape. Fill the scene with architectural details: bridges, towers, churches, \
+historic buildings, parks, and rivers that are characteristic of {city}.
+
+The scene features soft, refined textures with realistic PBR materials and gentle, lifelike lighting \
+and shadow effects. The current weather is {condition}. Weather elements are creatively integrated into \
+the urban architecture, establishing a dynamic interaction between the city's landscape and atmospheric \
+conditions, creating an immersive weather ambiance.
+
+Use a clean, unified composition with minimalistic aesthetics and a soft, solid-colored background that \
+highlights the main content. The overall visual style is fresh and soothing.
+
+Display a prominent weather icon at the top-center representing {condition}. The weather icon has no \
+background and can subtly overlap with the buildings.
+
+STRICT: Do NOT include ANY text, numbers, letters, street names, landmark labels, signs, descriptions, \
+banners, dates, or temperature readings anywhere in the image."""
+
+
+def _find_image_data(response) -> bytes | None:
+    """Return the first image payload from a Gemini response, or None."""
+    if not response.candidates:
+        return None
+    content = response.candidates[0].content
+    if not content or not content.parts:
+        return None
+    for part in content.parts:
+        if part.inline_data is not None and part.inline_data.data:
+            return part.inline_data.data
+    return None
 
 
 def generate_image(prompt: str, output_dir: str) -> str:
@@ -131,37 +163,24 @@ def generate_image(prompt: str, output_dir: str) -> str:
         raise RuntimeError("GEMINI_API_KEY environment variable not set.")
 
     client = genai.Client(api_key=api_key)
-
     response = client.models.generate_content(
-        model="gemini-3.1-flash-image",
+        model=GEMINI_MODEL,
         contents=prompt,
         config=types.GenerateContentConfig(
             response_modalities=["TEXT", "IMAGE"],
         ),
     )
 
-    # Extract the image from the response
-    if not response.candidates:
-        raise RuntimeError("No response from Gemini API.")
+    image_data = _find_image_data(response)
+    if not image_data:
+        raise RuntimeError("No image returned from Gemini API.")
 
-    content = response.candidates[0].content
-    if not content or not content.parts:
-        raise RuntimeError("No content in Gemini response.")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filepath = os.path.join(output_dir, f"weather_illustration_{timestamp}.png")
+    with open(filepath, "wb") as f:
+        f.write(image_data)
 
-    for part in content.parts:
-        if part.inline_data is not None and part.inline_data.data:
-            image_data = part.inline_data.data
-
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"weather_illustration_{timestamp}.png"
-            filepath = os.path.join(output_dir, filename)
-
-            with open(filepath, "wb") as f:
-                f.write(image_data)
-
-            return filepath
-
-    raise RuntimeError("No image returned from Gemini API.")
+    return filepath
 
 
 def main():
@@ -187,8 +206,7 @@ def main():
 
     # 3. Build prompt
     prompt = build_prompt(location["name"], location["country"], weather)
-    print(f"\nGenerated prompt:")
-    print(f"  {prompt}")
+    print(f"\nGenerated prompt:\n  {prompt}")
 
     # 4. Generate image
     print(f"\nGenerating isometric weather illustration...")
